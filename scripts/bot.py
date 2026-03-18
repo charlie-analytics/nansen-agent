@@ -2,20 +2,23 @@
 """
 @charliebic Telegram Bot
 - /start → sends latest snapshot from GitHub repo
-- All other messages → polite redirect, no queries fired
-- Zero Nansen credits used by users
+- /latest → same as /start
+- Freeform messages → AI chat for owner only, silent for everyone else
 """
 import os
 import json
 import glob
 import asyncio
+import anthropic
 from pathlib import Path
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7938176049:AAFYUdTQaOJLX7_e7cvfs-WRyBfNUgYzsJ4")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 REPO_DIR = "/root/nansen-agent"
 SUBSCRIBERS_FILE = "/root/.nansen-agent/subscribers.json"
+OWNER_IDS = {5544932741}  # Charlie
 
 def load_subscribers():
     if os.path.exists(SUBSCRIBERS_FILE):
@@ -45,7 +48,6 @@ def get_latest_snapshot():
 def format_for_telegram(content, date):
     """Trim the markdown report for Telegram (keep key tables, cut fluff)."""
     lines = content.split("\n")
-    # Keep first 60 lines — covers the key signals
     trimmed = "\n".join(lines[:60])
     return f"📊 *Latest Signal Snapshot — {date}*\n\n{trimmed}\n\n_Next update: daily at 10pm IST_"
 
@@ -62,7 +64,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = format_for_telegram(content, date)
-    # Telegram has 4096 char limit
     if len(msg) > 4000:
         msg = msg[:4000] + "\n\n_...truncated. Full data: github.com/charlie-analytics/nansen-agent_"
 
@@ -76,20 +77,35 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
 async def catch_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle any other message — no queries, no token burn."""
-    await update.message.reply_text(
-        "📡 This bot delivers daily smart money signals — no live queries.\n\n"
-        "New signals drop every day at *10pm IST*.\n"
-        "Use /latest to see today's snapshot.\n\n"
-        "Full data & history: github.com/charlie-analytics/nansen-agent",
-        parse_mode="Markdown"
-    )
+    """Freeform chat — owner gets Claude AI, everyone else gets silence."""
+    if not update.effective_user or update.effective_user.id not in OWNER_IDS:
+        return
+
+    user_message = update.message.text
+    if not user_message:
+        return
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        response = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=1024,
+            system="You are a helpful assistant for Charlie, a crypto analyst at BeInCrypto. You have context about Nansen smart money signals and on-chain analytics. Be concise and useful.",
+            messages=[{"role": "user", "content": user_message}]
+        )
+        reply = response.content[0].text
+        # Telegram 4096 char limit
+        if len(reply) > 4000:
+            reply = reply[:4000] + "\n\n_...truncated_"
+        await update.message.reply_text(reply)
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("latest", latest))
-    app.add_handler(MessageHandler(filters.ALL, catch_all))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, catch_all))
     print("Bot running...")
     app.run_polling()
 
