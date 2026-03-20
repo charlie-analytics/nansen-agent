@@ -4,12 +4,31 @@ Nansen Daily Signal Brief
 Runs daily at 10pm IST (16:30 UTC)
 Captures smart money signals across 5 chains, commits to GitHub, sends Telegram summary
 """
-import subprocess, json, datetime, os, sys
+import subprocess, json, datetime, os, sys, urllib.request
 
 REPO_DIR = "/root/nansen-agent"
 CHAINS = ["ethereum", "solana", "base", "arbitrum", "bnb"]
 THRESHOLD_USD = 5000
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+
+def get_defillama_context():
+    """Fetch chain TVLs and top protocol changes from DefiLlama (free, no key)."""
+    try:
+        req = urllib.request.urlopen("https://api.llama.fi/v2/chains", timeout=10)
+        chains = json.loads(req.read())
+        top_chains = sorted(chains, key=lambda x: -x.get("tvl", 0))[:5]
+
+        req2 = urllib.request.urlopen("https://api.llama.fi/protocols", timeout=10)
+        protocols = json.loads(req2.read())
+        # Find biggest 24h movers (non-CEX)
+        movers = [p for p in protocols if p.get("change_1d") and "CEX" not in p.get("category","")]
+        top_up = sorted(movers, key=lambda x: -float(x.get("change_1d", 0)))[:3]
+        top_down = sorted(movers, key=lambda x: float(x.get("change_1d", 0)))[:3]
+
+        return {"chains": top_chains, "tvl_up": top_up, "tvl_down": top_down}
+    except Exception as e:
+        print(f"DefiLlama error: {e}", file=sys.stderr)
+        return None
 
 def run_nansen(args):
     result = subprocess.run(["nansen"] + args, capture_output=True, text=True, timeout=45)
@@ -83,7 +102,7 @@ def format_report(buys, sells, today):
 
     return "\n".join(lines)
 
-def format_telegram(buys, sells, today):
+def format_telegram(buys, sells, today, llama=None):
     top_buys = sorted(buys, key=lambda x: -x["net_flow_7d_usd"])[:5]
     top_sells = sorted(sells, key=lambda x: x["net_flow_7d_usd"])[:3]
 
@@ -96,6 +115,19 @@ def format_telegram(buys, sells, today):
     msg += "\n🔴 *Top Exits (7d)*\n"
     for s in top_sells:
         msg += f"⚠️ *{s['token']}* ({s['chain']}): ${s['net_flow_7d_usd']:,.0f} | {s['trader_count']} wallets\n"
+
+    if llama:
+        msg += "\n📡 *DeFi Pulse (DefiLlama)*\n"
+        for c in llama["chains"][:3]:
+            msg += f"• {c['name']}: ${c['tvl']/1e9:.1f}B TVL\n"
+        if llama["tvl_up"]:
+            msg += "\n🚀 *TVL Gainers (24h)*\n"
+            for p in llama["tvl_up"][:2]:
+                msg += f"• {p['name']}: +{float(p['change_1d']):.1f}%\n"
+        if llama["tvl_down"]:
+            msg += "\n📉 *TVL Losers (24h)*\n"
+            for p in llama["tvl_down"][:2]:
+                msg += f"• {p['name']}: {float(p['change_1d']):.1f}%\n"
 
     msg += f"\n📊 {len(buys)} buy signals, {len(sells)} sell signals captured\n"
     msg += "📁 github.com/charlie-analytics/nansen-agent"
@@ -122,8 +154,9 @@ if __name__ == "__main__":
     today = datetime.date.today().isoformat()
     print(f"Running signal capture for {today}...")
     buys, sells = get_signals()
+    llama = get_defillama_context()
     print(f"Captured: {len(buys)} buys, {len(sells)} sells")
     commit_and_push(today, buys, sells)
     # Print Telegram summary to stdout for the cron job to send
     print("---TELEGRAM---")
-    print(format_telegram(buys, sells, today))
+    print(format_telegram(buys, sells, today, llama))
