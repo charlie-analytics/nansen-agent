@@ -3,8 +3,13 @@
 Everything here was built to run on an iPad. This page says what actually runs
 there, what it needs, and how far each one has been tested.
 
-Recorded test output: **[TEST-RUNS.md](TEST-RUNS.md)** — 55 checks, all passing.
+Recorded test output: **[TEST-RUNS.md](TEST-RUNS.md)** — 70 checks, all passing.
 Re-run it yourself with `./run_ipad_tests.sh`.
+
+**Those runs happen on Linux, not on an iPad.** I have no iPad, so nothing here
+has touched a real device. To close that gap there are two self-tests you run on
+the iPad, which check the real APIs and print a report — see
+[Verify it on your device](#verify-it-on-your-device) below.
 
 ## What runs on the iPad
 
@@ -21,6 +26,26 @@ Re-run it yourself with `./run_ipad_tests.sh`.
 | Tool | Tested how far |
 |---|---|
 | [`photo_dedupe.py`](photo-dedupe/photo_dedupe.py) — dedupe a photo folder | end to end, for real. Ready to use. |
+
+## Verify it on your device
+
+Two read-only scripts that run on the iPad and report what is actually true
+there. Each takes under a minute and copies its report to your clipboard, so you
+can paste it back to me and I can fix whatever the mocks got wrong.
+
+| Script | Where | What it answers |
+|---|---|---|
+| [`selftest.js`](ipad-agents/selftest.js) | Scriptable | Are the APIs present? Are the job feeds reachable, and what are their **real** field names? |
+| [`selftest_pythonista.py`](photo-dedupe/selftest_pythonista.py) | Pythonista | Does this build expose `get_assets`, `create_album`, `batch_delete`? Are the Asset attribute names what the deduper assumes? How slow is reading one photo? |
+
+Neither creates, deletes or modifies anything. `selftest.js` writes one small
+probe file to confirm storage works, then removes it. Run these **before** the
+real tools.
+
+The Scriptable one directly closes my biggest unknown: this environment blocks
+the job-board hosts, so `job_watcher.js`'s field mappings are unverified. The
+self-test prints the actual field names from a live response. If they differ,
+copy them into that feed's `fields` block — a one-line fix.
 
 ## Honest status
 
@@ -51,10 +76,12 @@ be unreliable on iOS regardless.
    minutes. Try this before installing anything.
 2. **Storage cleanup shortcut** — no triggers involved, so it is the one most
    likely to just work. A good feel for how Shortcuts behaves.
-3. **`job_watcher.js` in Scriptable** — free. If it shows jobs, it works.
-4. **Job alert emails** — the useful one, but leans on the flakiest iOS trigger.
-5. **`ipad_dedupe.py` in Pythonista** — last, because it is the only one that
-   costs money. Only if step 1 was not enough.
+3. **Scriptable + `selftest.js`** — free, and it tells us both whether the job
+   watcher will work here before you rely on it.
+4. **`job_watcher.js`** — once the self-test comes back clean.
+5. **Job alert emails** — the useful one, but leans on the flakiest iOS trigger.
+6. **Pythonista + `selftest_pythonista.py`, then `ipad_dedupe.py`** — last,
+   because it is the only one that costs money. Only if step 1 was not enough.
 
 ## The rule behind all of this
 

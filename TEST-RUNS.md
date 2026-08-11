@@ -9,7 +9,7 @@ Nothing here proves behaviour on a physical device — see the
 "What is not covered" section at the bottom.
 
 ```
-Recorded: 2026-08-11 20:27:21 UTC
+Recorded: 2026-08-11 20:32:19 UTC
 Python:   Python 3.11.15
 Node:     v22.22.2
 Pillow:   12.3.0
@@ -63,8 +63,18 @@ ipad_dedupe.py -- library mode against the PhotoKit mock
   PASS  degrades to a report without create_album
   PASS  degraded path deleted nothing
 
+selftest_pythonista.py -- the on-device capability check
+--------------------------------------------------------
+  PASS  detects the photos module
+  PASS  finds get_assets and batch_delete
+  PASS  reports the attributes the deduper reads
+  PASS  times a real image read
+  PASS  checks decoding for fuzzy matching
+  PASS  gives a clear verdict
+  PASS  selftest changed nothing
+
 ========================================
-31 passed, 0 failed
+38 passed, 0 failed
 
 ########################################
 # Suite 2: job watcher (JavaScript)
@@ -129,8 +139,19 @@ Every feed offline
   PASS  reports each failure
   PASS  sends no notification when there is nothing
 
+selftest.js -- the on-device capability check
+---------------------------------------------
+  PASS  names the device
+  PASS  checks every API the watcher needs
+  PASS  verifies storage works
+  PASS  reports a reachable feed's real field names
+  PASS  reports the mis-mapped feed's actual fields
+  PASS  parses the RSS feed
+  PASS  cleans up its probe file
+  PASS  copies the report to the clipboard
+
 ========================================
-24 passed, 0 failed
+32 passed, 0 failed
 
 ALL SUITES PASSED
 ```

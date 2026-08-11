@@ -93,6 +93,7 @@ globalThis.FileManager = {
     fileExists: (p) => store.has(p),
     readString: (p) => store.get(p),
     writeString: (p, v) => store.set(p, v),
+    remove: (p) => store.delete(p),
   }),
 };
 
@@ -194,6 +195,28 @@ check("survives total network failure", r.logs.includes("0 matching"), r.logs);
 check("reports each failure", (r.logs.match(/failed:/g) || []).length === 3, r.logs);
 check("sends no notification when there is nothing", r.notifications.length === 0);
 failFeeds = new Set();
+
+section("selftest.js -- the on-device capability check");
+globalThis.Device = {
+  model: () => "iPad Pro", systemName: () => "iPadOS", systemVersion: () => "18.5",
+};
+let clipboard = null;
+globalThis.Pasteboard = { copy: (text) => { clipboard = text; } };
+const probeStore = store;
+await import("./selftest.js?run=1");
+
+check("names the device", clipboard.includes("iPad Pro, iPadOS 18.5"), String(clipboard).slice(0, 80));
+check("checks every API the watcher needs",
+  clipboard.includes("ok      Request") && clipboard.includes("ok      XMLParser"));
+check("verifies storage works", clipboard.includes("ok      write and read back"));
+check("reports a reachable feed's real field names",
+  clipboard.includes("FIELD NAMES: title, company_name, url, publication_date"),
+  String(clipboard));
+check("reports the mis-mapped feed's actual fields",
+  clipboard.includes("FIELD NAMES: position, firm, href"));
+check("parses the RSS feed", clipboard.includes("item(s) parsed"));
+check("cleans up its probe file", !probeStore.has("/docs/selftest_probe.txt"));
+check("copies the report to the clipboard", clipboard.length > 200);
 
 // --- summary ---------------------------------------------------------------
 

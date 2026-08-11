@@ -41,8 +41,10 @@ _ASSETS = []
 
 
 def load_folder(folder):
+    # Full reset, so one test cannot leak state into the next.
     del _ASSETS[:]
     del _DELETED[:]
+    del _ALBUMS[:]
     index = 0
     for base, _dirs, files in os.walk(folder):
         for name in sorted(files):

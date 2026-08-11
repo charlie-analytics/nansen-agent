@@ -220,6 +220,40 @@ def test_ipad_library_mode(root):
         mock_photos.create_album = saved
 
 
+def test_pythonista_selftest(root):
+    section("selftest_pythonista.py -- the on-device capability check")
+
+    sys.path.insert(0, HERE)
+    import mock_photos
+
+    sys.modules["photos"] = mock_photos
+    mock_photos.load_folder(root)
+
+    buffer = io.StringIO()
+    source = open(os.path.join(HERE, "selftest_pythonista.py")).read()
+    try:
+        with redirect_stdout(buffer):
+            exec(compile(source, "selftest_pythonista.py", "exec"), {"__name__": "__main__"})
+    except SystemExit:
+        pass
+    out = buffer.getvalue()
+
+    check("detects the photos module", "FAILED: no `photos` module" not in out, out[:200])
+    check("finds get_assets and batch_delete",
+          "ok      get_assets" in out and "ok      batch_delete" in out)
+    check("reports the attributes the deduper reads",
+          "ok      pixel_width" in out and "ok      creation_date" in out)
+    check("times a real image read", "read " in out and "bytes in" in out)
+    check("checks decoding for fuzzy matching", "get_image() returned" in out)
+    check("gives a clear verdict", "Everything ipad_dedupe.py needs is present." in out,
+          out[-200:])
+    check("selftest changed nothing", len(mock_photos.get_assets()) == 9 and
+          not mock_photos.deleted() and not mock_photos.albums(),
+          "assets={0} deleted={1} albums={2}".format(
+              len(mock_photos.get_assets()), len(mock_photos.deleted()),
+              len(mock_photos.albums())))
+
+
 def main():
     try:
         import PIL  # noqa: F401
@@ -242,6 +276,10 @@ def main():
         build_fixture(root)
         test_ipad_folder_mode(root)
         test_ipad_library_mode(root)
+
+        # Reload the mock so the selftest sees a full library rather than the
+        # one the delete test just emptied.
+        test_pythonista_selftest(root)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
